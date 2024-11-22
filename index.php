@@ -1,17 +1,32 @@
 <?php
-$envFile = __DIR__ . '/.env';
-if (file_exists($envFile)) {
-    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        list($name, $value) = explode('=', $line, 2);
-        putenv(trim($name) . '=' . trim($value));
-    }
-}
-echo "Hello, World!";
 
-$host = getenv('SHOPIFY_HOST');
-if ($host) {
-    echo "HOST: $host";
+// Include the ShopifyService
+require_once __DIR__ . '/Services/ShopifyService.php';
+require_once __DIR__ . '/Services/DatabaseService.php';
+
+// Instantiate the DatabaseService
+$databaseService = new DatabaseService();
+
+// Instantiate the ShopifyService
+$shopifyService = new ShopifyService();
+
+// Verify the token using the service
+$decodedToken = $shopifyService->verifyToken();
+
+header('Content-Type: application/json');
+
+if ($decodedToken) {
+    $shopifyService->handleInstall();
+    http_response_code(200); // Set HTTP status to 200 OK
+    echo json_encode([
+        'message' => 'Hello, World!',
+        'decoded_token' => $decodedToken
+    ]);
 } else {
-    echo "HOST environment variable is not set.";
+    http_response_code(401);
+    echo json_encode([
+        'error' => 'Token verification failed.'
+    ]);
 }
+
+?>
