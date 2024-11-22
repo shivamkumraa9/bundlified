@@ -238,8 +238,47 @@ class ShopifyService {
             throw new Exception('GraphQL errors: ' . json_encode($data['errors']));
         }
 
-        return $data['data']['products']['edges'];
+        return $this->filterProducts($data['data']['products']['edges']);
     }
+
+    public function filterProducts($products) {      
+        // Initialize two arrays to hold the filtered products
+        $filteredProducts = [];
+        $excludedProducts = [];
+      
+        // Loop through the products and apply the filtering logic
+        foreach ($products as $product) {
+            $metafields = $product['node']['metafields']['edges'] ?? [];
+      
+            // Check if the product has the 'bundlified_free_product_id' metafield
+            $excludeProduct = false;
+            foreach ($metafields as $metafieldEdge) {
+                $metafield = $metafieldEdge['node'];
+                if (
+                    $metafield['key'] === 'bundlified_free_product_id' &&
+                    isset($metafield['value']) &&
+                    strlen($metafield['value']) > 0
+                ) {
+                    // If it has the metafield and its value is greater than 0, mark for exclusion
+                    $excludeProduct = true;
+                    break;
+                }
+            }
+      
+            // Depending on the condition, either include or exclude the product
+            if ($excludeProduct) {
+                $excludedProducts[] = $product;
+            } else {
+                $filteredProducts[] = $product;
+            }
+        }
+      
+        // Return both the filtered and excluded products
+        return [
+            'filtered' => $filteredProducts,
+            'excluded' => $excludedProducts
+        ];
+      }
 
     public function verifyToken() {
         $token = $this->getToken();
