@@ -79,9 +79,14 @@ class DatabaseService {
         }
     }
 
-    // Close the database connection
     public function closeConnection() {
         $this->connection->close();
+    }
+
+    public function getAccessTokenForShop($shop) {
+        $query = "SELECT accessToken FROM shop WHERE shop = '$shop' LIMIT 1";
+        $result = $this->getData($query);
+        return isset($result[0]['accessToken']) ? $result[0]['accessToken'] : null;
     }
 }
 
