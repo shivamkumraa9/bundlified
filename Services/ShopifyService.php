@@ -52,14 +52,41 @@ class ShopifyService
         }
     }
 
-    /**
-     * Get offline access token for the given session token and shop.
-     *
-     * @param string $sessionToken
-     * @param string $shop
-     * @return array
-     * @throws Exception
-     */
+    public function runDiscountAppMutation($shop, $accessToken)
+    {
+        $url = self::getAdminURL($shop, "api/{$this->shopifyApiVersion}/graphql.json");
+
+        $query = [
+            'query' => '
+                mutation {
+                discountAutomaticAppCreate(
+                    automaticAppDiscount: {
+                    title: "Volume discount"
+                    functionId: "8bc689c2-9a04-4d5c-8798-6b158186c89d"
+                    startsAt: "2022-06-22T00:00:00"
+                    }
+                ) {
+                    automaticAppDiscount {
+                        discountId
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+                }
+            '
+        ];
+
+        // Make the request
+        $response = $this->makePostRequest($url, $query, [
+            'Content-Type: application/json',
+            'X-Shopify-Access-Token: ' . $accessToken,
+        ]);
+    }
+
+
+
     public function getOfflineAccessToken($sessionToken, $shop)
     {
         $url = self::getAdminURL($shop, 'oauth/access_token');
@@ -145,6 +172,7 @@ class ShopifyService
                 $accessTokenResponse = $this->getOfflineAccessToken($sessionToken, $shop);
 
                 $accessToken = $accessTokenResponse['access_token'] ?? '';
+                $this->runDiscountAppMutation($shop, $accessToken);
                 $status = 'INSTALLED';
                 $createdAt = date('Y-m-d H:i:s');
 
@@ -169,7 +197,6 @@ class ShopifyService
     public function fetchProduct($shop, $productId)
     {
         $accessToken = $this->databaseService->getAccessTokenForShop($shop);
-
         if (!$accessToken) {
             throw new Exception("Access token for shop {$shop} not found.");
         }

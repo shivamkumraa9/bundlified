@@ -50,7 +50,7 @@ function injectAddBothProductButton(data) {
     
     const offerMessage = document.createElement('p');
     
-    offerMessage.textContent = `"${data.title}" is included in this offer 🔥`;
+    offerMessage.textContent = `Free "${data.title}" is included in this offer 🔥`;
     
     offerMessage.style.fontSize = '14px';
     offerMessage.style.marginTop = '10px';

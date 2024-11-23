@@ -8,7 +8,7 @@ embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-dev_store_url = "quickstart-1ebe7716.myshopify.com"
+dev_store_url = "shivam25.myshopify.com"
 include_config_on_deploy = true
 
 [access_scopes]
