@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/DatabaseService.php';
+require_once __DIR__ . '/AppService.php';
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -9,47 +10,23 @@ class ShopifyService
 {
     private $shopifyClientId;
     private $shopifyClientSecret;
-    private $shopifyHost;
     private $shopifyApiVersion;
     private $databaseService;
 
     public function __construct()
     {
-        $this->loadEnv();
+        AppService::loadEnv();
 
         $this->shopifyClientId = getenv('SHOPIFY_CLIENT_ID');
         $this->shopifyClientSecret = getenv('SHOPIFY_CLIENT_SECRET');
-        $this->shopifyHost = getenv('SHOPIFY_HOST');
         $this->shopifyApiVersion = getenv('SHOPIFY_API_VERSION');
 
         $this->databaseService = new DatabaseService();
     }
 
-    /**
-     * Get the Admin URL for a shop.
-     *
-     * @param string $shop
-     * @param string $suffix
-     * @return string
-     */
     public static function getAdminURL($shop, $suffix)
     {
         return "https://{$shop}/admin/{$suffix}";
-    }
-
-    /**
-     * Load environment variables from a .env file.
-     */
-    private function loadEnv()
-    {
-        $envFile = __DIR__ . '/../.env';
-        if (file_exists($envFile)) {
-            $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                list($name, $value) = explode('=', $line, 2);
-                putenv(trim($name) . '=' . trim($value));
-            }
-        }
     }
 
     public function runDiscountAppMutation($shop, $accessToken)
@@ -78,14 +55,11 @@ class ShopifyService
             '
         ];
 
-        // Make the request
-        $response = $this->makePostRequest($url, $query, [
+        $this->makePostRequest($url, $query, [
             'Content-Type: application/json',
             'X-Shopify-Access-Token: ' . $accessToken,
         ]);
     }
-
-
 
     public function getOfflineAccessToken($sessionToken, $shop)
     {
@@ -108,13 +82,6 @@ class ShopifyService
         return json_decode($response['body'], true);
     }
 
-    /**
-     * Helper function to make POST requests with cURL.
-     *
-     * @param string $url
-     * @param array $data
-     * @return array
-     */
     private function makePostRequest($url, $data, $headers = ['Content-Type: application/json'])
     {
         $ch = curl_init();
@@ -224,13 +191,11 @@ class ShopifyService
             ]
         ];
 
-        // Make the request
         $response = $this->makePostRequest($url, $query, [
             'Content-Type: application/json',
             'X-Shopify-Access-Token: ' . $accessToken,
         ]);
 
-        // Handle response
         if ($response['http_code'] !== 200) {
             throw new Exception('Failed to fetch products: ' . ($response['body'] ?? 'Unknown error'));
         }
@@ -249,15 +214,6 @@ class ShopifyService
         return $data['data']['product']['metafields']['edges'];
     }
 
-    /**
-     * Fetch products from Shopify using GraphQL.
-     *
-     * @param string $shop
-     * @param string $accessToken
-     * @param string|null $afterCursor
-     * @return array
-     * @throws Exception
-     */
     public function fetchProducts($shop)
     {
         $accessToken = $this->databaseService->getAccessTokenForShop($shop);
@@ -265,10 +221,8 @@ class ShopifyService
         if (!$accessToken) {
             throw new Exception("Access token for shop {$shop} not found.");
         }
-        // Shopify GraphQL endpoint
         $url = self::getAdminURL($shop, "api/{$this->shopifyApiVersion}/graphql.json");
 
-        // GraphQL query
         $query = [
             'query' => '
                 query {
@@ -315,13 +269,11 @@ class ShopifyService
             ',
         ];
 
-        // Make the request
         $response = $this->makePostRequest($url, $query, [
             'Content-Type: application/json',
             'X-Shopify-Access-Token: ' . $accessToken,
         ]);
 
-        // Handle response
         if ($response['http_code'] !== 200) {
             throw new Exception('Failed to fetch products: ' . ($response['body'] ?? 'Unknown error'));
         }
@@ -336,15 +288,12 @@ class ShopifyService
 
     public function filterProducts($products)
     {
-        // Initialize two arrays to hold the filtered products
         $filteredProducts = [];
         $excludedProducts = [];
 
-        // Loop through the products and apply the filtering logic
         foreach ($products as $product) {
             $metafields = $product['node']['metafields']['edges'] ?? [];
 
-            // Check if the product has the 'bundlified_free_product_id' metafield
             $excludeProduct = false;
             foreach ($metafields as $metafieldEdge) {
                 $metafield = $metafieldEdge['node'];
@@ -353,13 +302,11 @@ class ShopifyService
                     isset($metafield['value']) &&
                     strlen($metafield['value']) > 0
                 ) {
-                    // If it has the metafield and its value is greater than 0, mark for exclusion
                     $excludeProduct = true;
                     break;
                 }
             }
 
-            // Depending on the condition, either include or exclude the product
             if ($excludeProduct) {
                 $excludedProducts[] = $product;
             } else {
@@ -367,7 +314,6 @@ class ShopifyService
             }
         }
 
-        // Return both the filtered and excluded products
         return [
             'filtered' => $filteredProducts,
             'excluded' => $excludedProducts
@@ -402,15 +348,6 @@ class ShopifyService
         ];
     }
 
-    /**
-     * Set a metafield for a Shopify product.
-     *
-     * @param string $shop
-     * @param string $productId
-     * @param string $freeProductId
-     * @return array
-     * @throws Exception
-     */
     public function setProductMetafield($shop, $productId, $freeProductId)
     {
         $accessToken = $this->databaseService->getAccessTokenForShop($shop);
@@ -419,10 +356,8 @@ class ShopifyService
             throw new Exception("Access token for shop {$shop} not found.");
         }
 
-        // Shopify GraphQL endpoint
         $url = self::getAdminURL($shop, "api/{$this->shopifyApiVersion}/graphql.json");
 
-        // GraphQL mutation for updating the metafield
         $mutation = [
             'query' => '
                 mutation UpdateProductMetafield($input: ProductInput!) {
@@ -452,13 +387,11 @@ class ShopifyService
             ],
         ];
 
-        // Make the request
         $response = $this->makePostRequest($url, $mutation, [
             'Content-Type: application/json',
             'X-Shopify-Access-Token: ' . $accessToken,
         ]);
 
-        // Handle response
         if ($response['http_code'] !== 200) {
             throw new Exception('Failed to set metafield: ' . ($response['body'] ?? 'Unknown error'));
         }

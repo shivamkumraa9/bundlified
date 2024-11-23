@@ -11,7 +11,7 @@ header('Content-Type: application/json');
 
 
 // Include the ShopifyService
-require_once __DIR__ . '/Services/ShopifyService.php';
+require_once __DIR__ . '/../services/ShopifyService.php';
 
 try {
     // Validate the required GET parameters

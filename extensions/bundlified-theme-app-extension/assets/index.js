@@ -73,7 +73,7 @@ function injectAddBothProductButton(data) {
 
             const shop = Shopify?.shop;
 
-            const apiUrl = `https://destined-strictly-lacewing.ngrok-free.app/getProduct.php?shop=${shop}&productId=${encodeURIComponent(productGid)}`;
+            const apiUrl = `https://destined-strictly-lacewing.ngrok-free.app/api/getProduct.php?shop=${shop}&productId=${encodeURIComponent(productGid)}`;
 
             const response = await fetch(apiUrl, {
                 method: "GET",
