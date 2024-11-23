@@ -5,13 +5,16 @@ require_once __DIR__ . '/DatabaseService.php';
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 
-class ShopifyService {
+class ShopifyService
+{
     private $shopifyClientId;
     private $shopifyClientSecret;
     private $shopifyHost;
     private $shopifyApiVersion;
+    private $databaseService;
 
-    public function __construct() {
+    public function __construct()
+    {
         $this->loadEnv();
 
         $this->shopifyClientId = getenv('SHOPIFY_CLIENT_ID');
@@ -29,14 +32,16 @@ class ShopifyService {
      * @param string $suffix
      * @return string
      */
-    public static function getAdminURL($shop, $suffix) {
+    public static function getAdminURL($shop, $suffix)
+    {
         return "https://{$shop}/admin/{$suffix}";
     }
 
     /**
      * Load environment variables from a .env file.
      */
-    private function loadEnv() {
+    private function loadEnv()
+    {
         $envFile = __DIR__ . '/../.env';
         if (file_exists($envFile)) {
             $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -55,9 +60,10 @@ class ShopifyService {
      * @return array
      * @throws Exception
      */
-    public function getOfflineAccessToken($sessionToken, $shop) {
+    public function getOfflineAccessToken($sessionToken, $shop)
+    {
         $url = self::getAdminURL($shop, 'oauth/access_token');
-        
+
         $data = [
             'client_id' => $this->shopifyClientId,
             'client_secret' => $this->shopifyClientSecret,
@@ -82,21 +88,22 @@ class ShopifyService {
      * @param array $data
      * @return array
      */
-    private function makePostRequest($url, $data, $headers = ['Content-Type: application/json']) {
+    private function makePostRequest($url, $data, $headers = ['Content-Type: application/json'])
+    {
         $ch = curl_init();
-    
+
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    
+
         $responseBody = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
-    
+
         curl_close($ch);
-    
+
         return [
             'body' => $responseBody,
             'http_code' => $httpCode,
@@ -104,16 +111,18 @@ class ShopifyService {
         ];
     }
 
-    public function getToken() {
-        $requestHeaders = getallheaders(); 
+    public function getToken()
+    {
+        $requestHeaders = getallheaders();
         $queryParams = $_GET;
-    
+
         $token = $requestHeaders['Authorization'] ?? $queryParams['id_token'] ?? null;
-    
+
         return $token;
     }
 
-    public function handleInstall() {
+    public function handleInstall()
+    {
         $shop = $_GET['shop'] ?? null;
 
         if (!$shop) {
@@ -141,7 +150,7 @@ class ShopifyService {
 
                 $query = "INSERT INTO shop (shop, accessToken, status, created_at) 
                           VALUES ('{$shop}', '{$accessToken}', '{$status}', '{$createdAt}')";
-                
+
                 $this->databaseService->executeQuery($query);
 
                 return [
@@ -157,6 +166,62 @@ class ShopifyService {
         }
     }
 
+    public function fetchProduct($shop, $productId)
+    {
+        $accessToken = $this->databaseService->getAccessTokenForShop($shop);
+
+        if (!$accessToken) {
+            throw new Exception("Access token for shop {$shop} not found.");
+        }
+        $url = self::getAdminURL($shop, "api/{$this->shopifyApiVersion}/graphql.json");
+
+        $query = [
+            'query' => '
+                query ($productId: ID!) {
+                    product(id: $productId) {
+                        metafields(first: 250) {
+                            edges {
+                                node {
+                                    id
+                                    key
+                                    value
+                                    type
+                                }
+                            }
+                        }
+                    }
+                }
+            ',
+            'variables' => [
+                'productId' => $productId
+            ]
+        ];
+
+        // Make the request
+        $response = $this->makePostRequest($url, $query, [
+            'Content-Type: application/json',
+            'X-Shopify-Access-Token: ' . $accessToken,
+        ]);
+
+        // Handle response
+        if ($response['http_code'] !== 200) {
+            throw new Exception('Failed to fetch products: ' . ($response['body'] ?? 'Unknown error'));
+        }
+        $data = json_decode($response['body'], true);
+
+        if (isset($data['errors'])) {
+            throw new Exception('GraphQL errors: ' . json_encode($data['errors']));
+        }
+
+        foreach ($data['data']['product']['metafields']['edges'] as $edge) {
+            if (isset($edge['node']['key']) && $edge['node']['key'] === "bundlified_free_product_id") {
+                return json_decode($edge['node']['value'], true);
+            }
+        }
+        return (object) [];
+        return $data['data']['product']['metafields']['edges'];
+    }
+
     /**
      * Fetch products from Shopify using GraphQL.
      *
@@ -166,7 +231,8 @@ class ShopifyService {
      * @return array
      * @throws Exception
      */
-    public function fetchProducts($shop) {
+    public function fetchProducts($shop)
+    {
         $accessToken = $this->databaseService->getAccessTokenForShop($shop);
 
         if (!$accessToken) {
@@ -241,15 +307,16 @@ class ShopifyService {
         return $this->filterProducts($data['data']['products']['edges']);
     }
 
-    public function filterProducts($products) {      
+    public function filterProducts($products)
+    {
         // Initialize two arrays to hold the filtered products
         $filteredProducts = [];
         $excludedProducts = [];
-      
+
         // Loop through the products and apply the filtering logic
         foreach ($products as $product) {
             $metafields = $product['node']['metafields']['edges'] ?? [];
-      
+
             // Check if the product has the 'bundlified_free_product_id' metafield
             $excludeProduct = false;
             foreach ($metafields as $metafieldEdge) {
@@ -264,7 +331,7 @@ class ShopifyService {
                     break;
                 }
             }
-      
+
             // Depending on the condition, either include or exclude the product
             if ($excludeProduct) {
                 $excludedProducts[] = $product;
@@ -272,15 +339,16 @@ class ShopifyService {
                 $filteredProducts[] = $product;
             }
         }
-      
+
         // Return both the filtered and excluded products
         return [
             'filtered' => $filteredProducts,
             'excluded' => $excludedProducts
         ];
-      }
+    }
 
-    public function verifyToken() {
+    public function verifyToken()
+    {
         $token = $this->getToken();
         if ($token) {
             try {
@@ -316,7 +384,8 @@ class ShopifyService {
      * @return array
      * @throws Exception
      */
-    public function setProductMetafield($shop, $productId, $freeProductId) {
+    public function setProductMetafield($shop, $productId, $freeProductId)
+    {
         $accessToken = $this->databaseService->getAccessTokenForShop($shop);
 
         if (!$accessToken) {
