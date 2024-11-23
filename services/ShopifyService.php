@@ -29,59 +29,6 @@ class ShopifyService
         return "https://{$shop}/admin/{$suffix}";
     }
 
-    public function runDiscountAppMutation($shop, $accessToken)
-    {
-        $url = self::getAdminURL($shop, "api/{$this->shopifyApiVersion}/graphql.json");
-
-        $query = [
-            'query' => '
-                mutation {
-                discountAutomaticAppCreate(
-                    automaticAppDiscount: {
-                    title: "Volume discount"
-                    functionId: "8bc689c2-9a04-4d5c-8798-6b158186c89d"
-                    startsAt: "2022-06-22T00:00:00"
-                    }
-                ) {
-                    automaticAppDiscount {
-                        discountId
-                    }
-                    userErrors {
-                        field
-                        message
-                    }
-                }
-                }
-            '
-        ];
-
-        $this->makePostRequest($url, $query, [
-            'Content-Type: application/json',
-            'X-Shopify-Access-Token: ' . $accessToken,
-        ]);
-    }
-
-    public function getOfflineAccessToken($sessionToken, $shop)
-    {
-        $url = self::getAdminURL($shop, 'oauth/access_token');
-
-        $data = [
-            'client_id' => $this->shopifyClientId,
-            'client_secret' => $this->shopifyClientSecret,
-            'grant_type' => 'urn:ietf:params:oauth:grant-type:token-exchange',
-            'subject_token' => $sessionToken,
-            'subject_token_type' => 'urn:ietf:params:oauth:token-type:id_token',
-        ];
-
-        $response = $this->makePostRequest($url, $data);
-
-        if (!$response || $response['http_code'] !== 200) {
-            throw new Exception('Failed to retrieve access token: ' . ($response['body'] ?? 'Unknown error'));
-        }
-
-        return json_decode($response['body'], true);
-    }
-
     private function makePostRequest($url, $data, $headers = ['Content-Type: application/json'])
     {
         $ch = curl_init();
@@ -159,6 +106,59 @@ class ShopifyService
                 ];
             }
         }
+    }
+
+    public function getOfflineAccessToken($sessionToken, $shop)
+    {
+        $url = self::getAdminURL($shop, 'oauth/access_token');
+
+        $data = [
+            'client_id' => $this->shopifyClientId,
+            'client_secret' => $this->shopifyClientSecret,
+            'grant_type' => 'urn:ietf:params:oauth:grant-type:token-exchange',
+            'subject_token' => $sessionToken,
+            'subject_token_type' => 'urn:ietf:params:oauth:token-type:id_token',
+        ];
+
+        $response = $this->makePostRequest($url, $data);
+
+        if (!$response || $response['http_code'] !== 200) {
+            throw new Exception('Failed to retrieve access token: ' . ($response['body'] ?? 'Unknown error'));
+        }
+
+        return json_decode($response['body'], true);
+    }
+
+    public function runDiscountAppMutation($shop, $accessToken)
+    {
+        $url = self::getAdminURL($shop, "api/{$this->shopifyApiVersion}/graphql.json");
+
+        $query = [
+            'query' => '
+                mutation {
+                discountAutomaticAppCreate(
+                    automaticAppDiscount: {
+                    title: "Volume discount"
+                    functionId: "8bc689c2-9a04-4d5c-8798-6b158186c89d"
+                    startsAt: "2022-06-22T00:00:00"
+                    }
+                ) {
+                    automaticAppDiscount {
+                        discountId
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+                }
+            '
+        ];
+
+        $this->makePostRequest($url, $query, [
+            'Content-Type: application/json',
+            'X-Shopify-Access-Token: ' . $accessToken,
+        ]);
     }
 
     public function fetchProduct($shop, $productId)
@@ -348,7 +348,7 @@ class ShopifyService
         ];
     }
 
-    public function setProductMetafield($shop, $productId, $freeProductId)
+    public function setProductMetafield($shop, $productId, $data)
     {
         $accessToken = $this->databaseService->getAccessTokenForShop($shop);
 
@@ -380,7 +380,7 @@ class ShopifyService
                             'namespace' => 'custom',
                             'key' => 'bundlified_free_product_id',
                             'type' => 'single_line_text_field',
-                            'value' => $freeProductId,
+                            'value' => $data,
                         ],
                     ],
                 ],
